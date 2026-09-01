@@ -1,0 +1,12 @@
+Bitte diese Bilddateien exakt mit diesen Namen in diesen assets-Ordner hochladen:
+
+hero-final.jpg        = das freigegebene BMW + Mercedes Hero-Bild
+
+garage.jpg            = echtes Garage-Temperli-Aussenfoto
+
+service-oil.jpg        = Service/Wartung Bild
+service-tires.jpg      = Pneus/Räder Bild
+service-repair.jpg     = Reparaturen Bild
+service-ac.jpg         = Klimaservice Bild
+
+Die Website-Dateien index.html, styles.css und script.js sind bereits auf diese Pfade vorbereitet.
