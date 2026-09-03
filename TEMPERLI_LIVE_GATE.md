@@ -1,6 +1,20 @@
 # Garage Temperli — Live Production Gate
 
-Status: BLOCKED FOR PRODUCTION until the current live n8n workflow and the separate Telegram-Team workflow are read back, the remaining poll zero-result risk is ruled out, the Telegram reply owner is tenant-safe, the OpenAI path is intentionally configured, and one controlled E2E passes.
+Status: BLOCKED FOR PRODUCTION until the current live n8n workflow and the separate Telegram-Team workflow are read back, the remaining poll zero-result risk is ruled out, the Telegram reply owner is tenant-safe, the OpenAI path is intentionally configured, the running n8n version passes the current security-version gate, and one controlled E2E passes.
+
+## Current n8n security-version gate — added 2026-09-03
+
+A new n8n security advisory published 2026-09-02 (`GHSA-6xcw-7xm6-48c6`) describes a **High** severity expression-sandbox escape that can lead to code execution on instances using the legacy expression engine. The advisory lists these patched lines:
+
+- n8n `>= 2.38.2`, or
+- n8n `>= 2.37.7` on the maintained 2.37 line, or
+- n8n `>= 1.123.76` on the maintained legacy 1.x line.
+
+The installed Zantua/n8n runtime version has **not** been read in this run. Therefore no public Temperli E2E or production sign-off should proceed until the actual running version is checked against the applicable patched line. Do not infer safety from a Docker image tag such as `latest`; read the runtime version actually running.
+
+If an immediate upgrade is impossible and the instance is affected, the advisory states the `vm` expression engine is not affected. Treat `N8N_EXPRESSION_ENGINE=vm` only as a temporary mitigation until an upgrade is verified. Also keep workflow editing and credential access restricted to trusted users.
+
+A separate High advisory published 2026-07-22 (`GHSA-64xh-79j6-r5v8`) affected several AI/LLM nodes that could bypass credential "Allowed HTTP Request Domains" controls when shared credentials were used. Its patched lines are `>=2.32.1` / `>=2.31.5`. Any version satisfying the newer 2026-09-02 2.x gate above also clears this older version floor, but credential sharing still needs least-privilege review.
 
 ## Corrected zero-result evidence discovered 2026-09-03
 
@@ -24,23 +38,26 @@ This is strong evidence for the **required design**, but not proof that the curr
 
 ## What must be verified on CURRENT LIVE
 
-1. Read back current `09HVPJgxGyFCRIeJ` rather than applying an old STAGING patch blindly.
-2. Confirm the main chat zero-result lookups still have their required output-on-empty behavior.
-3. Inspect `Antworten abrufen` in the LIVE poll path specifically. An empty poll must still reach `Antworten sammeln` / webhook response and return an empty reply list instead of hanging.
-4. Check `Reservierungen pruefen` and `Session pruefen (Haupt)` only if those paths remain relevant; do not change them solely because an old note listed them.
-5. Read back the separate `Werkstatt-Assistent – Telegram-Team` workflow and verify that it is the single active Telegram reply owner.
-6. In that Telegram-Team workflow, require conversation-first tenant binding: referenced `conversation_id` -> stored `tenant_id` -> workshop row -> incoming chat ID equality. Reject unknown conversation, missing tenant, or chat mismatch before reply storage or takeover.
-7. Verify replies are stored with both the validated `conversation_id` and validated `tenant_id`, not a tenant selected by chat-ID first match.
+1. Read the actual running n8n version and prove it satisfies the applicable 2026-09-02 patched line before public production testing.
+2. Read back current `09HVPJgxGyFCRIeJ` rather than applying an old STAGING patch blindly.
+3. Confirm the main chat zero-result lookups still have their required output-on-empty behavior.
+4. Inspect `Antworten abrufen` in the LIVE poll path specifically. An empty poll must still reach `Antworten sammeln` / webhook response and return an empty reply list instead of hanging.
+5. Check `Reservierungen pruefen` and `Session pruefen (Haupt)` only if those paths remain relevant; do not change them solely because an old note listed them.
+6. Read back the separate `Werkstatt-Assistent – Telegram-Team` workflow and verify that it is the single active Telegram reply owner.
+7. In that Telegram-Team workflow, require conversation-first tenant binding: referenced `conversation_id` -> stored `tenant_id` -> workshop row -> incoming chat ID equality. Reject unknown conversation, missing tenant, or chat mismatch before reply storage or takeover.
+8. Verify replies are stored with both the validated `conversation_id` and validated `tenant_id`, not a tenant selected by chat-ID first match.
+9. Review shared credential permissions with least privilege, especially credentials usable by AI/LLM or arbitrary-request-capable nodes.
 
 ## Required evidence before Temperli E2E
 
-1. CURRENT live chat + poll/read contract matches the website bridge, especially empty-poll behavior.
-2. CURRENT Telegram-Team handoff is tenant-safe using conversation-first binding and trigger ownership is unambiguous.
-3. Model path is intentionally OpenAI if OpenAI remains the product requirement. The inspected 2026-08-25/26 artifacts use Anthropic Claude, so OpenAI is not yet evidenced.
-4. Website server has chat/poll/read webhook URLs plus Temperli widget key configured server-side only.
-5. Latest PHP bridge files pass runtime syntax/fail-closed checks on the actual Hostinger/PHP environment.
-6. One controlled E2E passes: website -> authorized tenant -> model -> storage -> forced escalation -> Telegram -> team reply -> poll -> customer-visible reply -> read acknowledgement.
-7. `health.php` and monitoring remain green after deploy.
+1. Running n8n version passes the current security-version gate.
+2. CURRENT live chat + poll/read contract matches the website bridge, especially empty-poll behavior.
+3. CURRENT Telegram-Team handoff is tenant-safe using conversation-first binding and trigger ownership is unambiguous.
+4. Model path is intentionally OpenAI if OpenAI remains the product requirement. The inspected 2026-08-25/26 artifacts use Anthropic Claude, so OpenAI is not yet evidenced.
+5. Website server has chat/poll/read webhook URLs plus Temperli widget key configured server-side only.
+6. Latest PHP bridge files pass runtime syntax/fail-closed checks on the actual Hostinger/PHP environment.
+7. One controlled E2E passes: website -> authorized tenant -> model -> storage -> forced escalation -> Telegram -> team reply -> poll -> customer-visible reply -> read acknowledgement.
+8. `health.php` and monitoring remain green after deploy.
 
 ## Evidence levels
 
@@ -53,7 +70,7 @@ This is strong evidence for the **required design**, but not proof that the curr
 - LIVE `Antworten abrufen` empty-poll behavior: EXPLICITLY UNVERIFIED IN DATED EVIDENCE.
 - STAGING Telegram conversation-first tenant hardening: REAL-TEST EVIDENCE (`#395`, `#396`, `#398`).
 - CURRENT separate live Telegram-Team hardening: UNKNOWN UNTIL READBACK.
-- Current live state generally: UNKNOWN UNTIL READBACK.
+- Current running n8n version: UNKNOWN UNTIL RUNTIME READBACK.
 - OpenAI path: NOT PROVEN.
 - Full Temperli E2E: NOT PROVEN.
 
@@ -65,4 +82,4 @@ This is strong evidence for the **required design**, but not proof that the curr
 
 ## Exactly one next step
 
-Read back CURRENT live `09HVPJgxGyFCRIeJ` **and** the separate `Werkstatt-Assistent – Telegram-Team`, with first priority on `Antworten abrufen` empty-poll behavior and conversation-first Telegram tenant binding. Only after that static gate is clean should a paid OpenAI E2E be spent.
+In a context with current infrastructure read access, read the **actual running n8n version**, current live `09HVPJgxGyFCRIeJ`, and the separate `Werkstatt-Assistent – Telegram-Team`. First prove the runtime is on a patched n8n line, then verify `Antworten abrufen` empty-poll behavior and conversation-first Telegram tenant binding. Only after that static/security gate is clean should a paid OpenAI E2E be spent.
