@@ -53,7 +53,7 @@ Staging: `https://garage-temperli.zantua-ai.com/`
 The user has authorized continuing the Temperli implementation without repeatedly asking for routine handoff confirmations. Small API cost for the required final AI connection is acceptable. Still stop before destructive cleanup, secret disclosure, uncontrolled external sends, or materially risky production changes.
 
 ## Last ChatGPT update — 2026-09-03
-Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`).
+Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`). Draft PR: `#1`.
 
 ### Exact changes
 - Added `chat-proxy.php` as a same-origin server bridge for the website AI.
@@ -64,6 +64,7 @@ Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`).
 - Proxy sends `X-Zantua-Bridge-Key` to n8n and fails closed when URL/secret is absent or invalid.
 - TLS verification is required for upstream; redirects are disabled.
 - Updated branch `script.js` so `GT_AI_CONFIG.endpoint` points to same-origin `chat-proxy.php` before `ai-chat.js` loads.
+- Hardened branch `contact.php`: removed hard mbstring dependency, added request-key allowlist, explicit service/date/time validation and lock failure handling. Test recipient remains internal.
 - Added `TEMPERLI_AI_BRIDGE.md` with the deployment/auth contract and test evidence.
 
 ### Unchanged
@@ -71,22 +72,24 @@ Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`).
 - No n8n node/workflow/credential was changed because this run had no n8n tool access.
 - No OpenAI prompt/model configuration changed.
 - No Telegram configuration changed.
-- No customer email recipient changed.
+- Customer email recipient was not changed.
 
 ### Tests and exact results
-- `php -l chat-proxy.php`: PASS, no syntax errors on PHP 8.4.23.
-- Controlled local POST with valid staging Origin but missing server config: HTTP 503, fail-closed before upstream call.
-- Invalid Origin: HTTP 403.
-- Unknown body field: HTTP 400.
-- Invalid session ID: HTTP 422.
+- `php -l chat-proxy.php`: PASS on PHP 8.4.23.
+- Valid staging Origin with missing AI server config: HTTP 503, fail-closed before upstream call.
+- AI invalid Origin: HTTP 403; unknown field: HTTP 400; invalid session: HTTP 422.
 - `node --check` for updated `script.js`: PASS.
+- Existing `contact.php` was reproduced locally and exposed a PHP 500 when mbstring is absent (`mb_substr` undefined).
+- Hardened `contact.php`: `php -l` PASS; valid payload reached mail stage and returned expected HTTP 503 because local mail is unavailable, not HTTP 500; unknown field HTTP 400; invalid service HTTP 422.
 
 ### Evidence level
-- AI bridge: **static** only.
-- Frontend endpoint wiring: **configured on branch** only.
+- Website AI bridge: **static**.
+- Frontend endpoint wiring: **configured on branch**.
+- Contact hardening: **static**.
 - n8n header gate: **not verified**.
 - OpenAI response: **not E2E verified**.
 - Telegram handoff/poll-read: **not E2E verified**.
+- Form mail delivery: **not E2E verified**.
 
 `production_changed = false`
 `paid_ai_calls = 0`
@@ -98,9 +101,9 @@ Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`).
 
 ### Remaining risks/open issues
 - Need current n8n HANDOFF sticky/workflow inspection before asserting payload compatibility or existing security gate.
-- Need Hostinger runtime verification for PHP cURL/temp-file rate limiting.
+- Need Hostinger runtime verification for PHP cURL/temp-file rate limiting and actual mail transport.
 - Need controlled real E2E for AI response, request storage, Telegram handoff and poll/read.
-- Repository visibility was previously observed as public; proprietary code should not be treated as private until repo visibility is corrected.
+- Repository visibility was observed as public; proprietary code is not private until repo visibility is corrected.
 
 ### Exactly one recommended next step
 Inspect workflow `09HVPJgxGyFCRIeJ` and its latest HANDOFF sticky, then configure/verify the `X-Zantua-Bridge-Key` gate before the first controlled paid E2E call.
