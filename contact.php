@@ -2,6 +2,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
+header('Referrer-Policy: same-origin');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -15,7 +16,7 @@ $allowedOrigins = [
     'https://www.garagetemperli.ch'
 ];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if ($origin !== '' && !in_array($origin, $allowedOrigins, true)) {
+if ($origin === '' || !in_array($origin, $allowedOrigins, true)) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'message' => 'Anfrage nicht erlaubt.']);
     exit;
@@ -41,28 +42,34 @@ if (!is_array($data)) {
     exit;
 }
 
-// Honeypot: echte Besucher lassen dieses Feld leer.
 if (!empty($data['website'])) {
     echo json_encode(['ok' => true, 'message' => 'Danke.']);
     exit;
 }
 
-// Serverseitiges Rate Limit nur auf REMOTE_ADDR, nicht auf frei setzbare Proxy-Header.
+// Fester 15-Minuten-Bucket, ausschließlich auf REMOTE_ADDR.
 $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-$bucket = hash('sha256', $ip . '|' . date('Y-m-d-H-i'));
-$rateFile = sys_get_temp_dir() . '/gt_contact_' . $bucket . '.json';
-$now = time();
 $window = 900;
 $maxRequests = 5;
-$state = ['start' => $now, 'count' => 0];
-if (is_file($rateFile)) {
-    $loaded = json_decode((string)@file_get_contents($rateFile), true);
-    if (is_array($loaded)) $state = array_merge($state, $loaded);
+$bucketId = (string)floor(time() / $window);
+$rateFile = sys_get_temp_dir() . '/gt_contact_' . hash('sha256', $ip . '|' . $bucketId) . '.count';
+$fh = @fopen($rateFile, 'c+');
+if (!$fh) {
+    http_response_code(503);
+    echo json_encode(['ok' => false, 'message' => 'Anfrage kann gerade nicht verarbeitet werden. Bitte rufen Sie uns an.']);
+    exit;
 }
-if (($now - (int)$state['start']) > $window) $state = ['start' => $now, 'count' => 0];
-$state['count'] = (int)$state['count'] + 1;
-@file_put_contents($rateFile, json_encode($state), LOCK_EX);
-if ($state['count'] > $maxRequests) {
+flock($fh, LOCK_EX);
+rewind($fh);
+$current = (int)trim((string)stream_get_contents($fh));
+$current++;
+ftruncate($fh, 0);
+rewind($fh);
+fwrite($fh, (string)$current);
+fflush($fh);
+flock($fh, LOCK_UN);
+fclose($fh);
+if ($current > $maxRequests) {
     http_response_code(429);
     echo json_encode(['ok' => false, 'message' => 'Zu viele Anfragen. Bitte versuchen Sie es später erneut oder rufen Sie uns an.']);
     exit;
@@ -96,13 +103,9 @@ if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
 $subject = 'Neue Website-Anfrage – Garage Temperli';
 $body = "Neue Anfrage über die Garage-Temperli-Website\n\n"
-      . "Name: {$name}\n"
-      . "Telefon: {$phone}\n"
-      . "E-Mail: " . ($email ?: 'nicht angegeben') . "\n"
-      . "Fahrzeug / VIN / Typenschein: {$vehicle}\n"
-      . "Anliegen: {$service}\n"
-      . "Wunschdatum: " . ($date ?: 'offen') . "\n"
-      . "Wunschzeit: " . ($time ?: 'offen') . "\n\n"
+      . "Name: {$name}\nTelefon: {$phone}\nE-Mail: " . ($email ?: 'nicht angegeben') . "\n"
+      . "Fahrzeug / VIN / Typenschein: {$vehicle}\nAnliegen: {$service}\n"
+      . "Wunschdatum: " . ($date ?: 'offen') . "\nWunschzeit: " . ($time ?: 'offen') . "\n\n"
       . "Nachricht:\n" . ($message ?: '—') . "\n";
 
 $headers = [
