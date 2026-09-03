@@ -122,16 +122,36 @@ if (!is_array($decoded)) {
 $rawReplies = isset($decoded['replies']) && is_array($decoded['replies']) ? $decoded['replies'] : [];
 $rawIds = isset($decoded['replyIds']) && is_array($decoded['replyIds']) ? $decoded['replyIds'] : [];
 $replies = [];
-foreach (array_slice($rawReplies, 0, 20) as $reply) {
-    if (is_string($reply) && trim($reply) !== '') {
-        $replies[] = function_exists('mb_substr') ? mb_substr(trim($reply), 0, 5000) : substr(trim($reply), 0, 5000);
-    }
-}
 $replyIds = [];
-foreach (array_slice($rawIds, 0, 20) as $id) {
-    if (is_int($id) || (is_string($id) && preg_match('/^[A-Za-z0-9_-]{1,96}$/', $id))) {
-        $replyIds[] = $id;
+$seenReplyIds = [];
+
+// Preserve reply/id correlation. Never acknowledge an ID whose matching reply was rejected.
+foreach (array_slice($rawReplies, 0, 20, true) as $index => $reply) {
+    if (!is_string($reply) || trim($reply) === '') {
+        continue;
     }
+
+    $cleanReply = function_exists('mb_substr')
+        ? mb_substr(trim($reply), 0, 5000)
+        : substr(trim($reply), 0, 5000);
+    $replies[] = $cleanReply;
+
+    if (!array_key_exists($index, $rawIds)) {
+        continue;
+    }
+    $id = $rawIds[$index];
+    $validId = is_int($id)
+        || (is_string($id) && preg_match('/^[A-Za-z0-9_-]{1,96}$/', $id));
+    if (!$validId) {
+        continue;
+    }
+
+    $idKey = gettype($id) . ':' . (string)$id;
+    if (isset($seenReplyIds[$idKey])) {
+        continue;
+    }
+    $seenReplyIds[$idKey] = true;
+    $replyIds[] = $id;
 }
 
 gt_poll_json(200, [
