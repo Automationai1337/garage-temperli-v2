@@ -1,62 +1,85 @@
 # Garage Temperli AI bridge deployment
 
 ## Goal
-Keep all model/n8n secrets server-side and route the public website widget through a same-origin PHP bridge before any paid model call.
+Keep the existing Werkstatt-Assistent tenant credential server-side and route the public Garage Temperli widget through same-origin PHP bridges before n8n/model calls or human-handoff operations.
+
+## Verified existing n8n contract
+The File Library export `werkstatt-assistent-backend-EXPORT.json` states it was exported from live workflow `09HVPJgxGyFCRIeJ` after the v7 merge and had a successful live test on execution 383 with a test tenant.
+
+The exported live web-chat contract is:
+- Chat webhook path: `werkstatt-chat`.
+- Authorization header: `X-Widget-Key` / `x-widget-key`.
+- Tenant resolution: `Werkstaetten.widget_key` -> active tenant row. The browser does not need to send a tenant ID.
+- Request fields consumed by the existing path include `message`, `conversationId`, `visitorId`, optional `messageId`, and `channel`.
+- Success response contains `reply`, `conversationId`, and `escalate`.
+- Poll webhook path: `werkstatt-chat-poll`, authorized by the same widget key and tenant-scoped before reading `Team-Antworten`.
+- Read webhook path: `werkstatt-chat-read`, authorized by the same widget key and tenant-scoped before updating read state.
+- Request/message/conversation storage already exists in that workflow.
+- Telegram escalation already exists. The Telegram reply trigger inside the main backend is intentionally disabled because the export says the separate active workflow `Werkstatt-Assistent – Telegram-Team` owns that trigger.
+
+Important: this export currently calls Anthropic (`Claude fragen` -> `https://api.anthropic.com/v1/messages`). It is **not evidence that the requested OpenAI path is configured**.
 
 ## Current branch implementation
-- `script.js` sets the widget endpoint to `chat-proxy.php` before `ai-chat.js` loads.
-- `chat-proxy.php` fixes `tenant=garage-temperli` and `source=garage-temperli-web` server-side.
-- Browser-supplied tenant/page/origin metadata is never forwarded upstream.
-- Strict origin allowlist: staging plus `garagetemperli.ch` and `www.garagetemperli.ch`.
-- JSON/body allowlist and size limits.
-- Rate limiting by `REMOTE_ADDR` before n8n/model; proxy headers are not trusted.
-- n8n URL and shared secret are read only from server environment.
-- Proxy fails closed when URL/secret is missing or invalid.
-- TLS verification is required for the n8n upstream and redirects are disabled.
-- `health.php` provides a zero-model-call readiness check: HTTP 200 only when required PHP runtime capabilities and the two server-side bridge settings are present; otherwise HTTP 503. It exposes no secret values.
-- `contact.php` is hardened separately for the existing website form; its test recipient remains unchanged.
+- `script.js` configures `chat-proxy.php`, `chat-poll.php`, and `chat-read.php` before `ai-chat.js` loads.
+- `chat-proxy.php` keeps the real Temperli widget key server-side and sends it upstream as `X-Widget-Key` to reuse the existing live n8n authorization contract instead of creating a parallel auth architecture.
+- The browser cannot choose a tenant. n8n resolves the tenant from the server-held widget key.
+- Browser `sessionId` is hashed server-side into stable restricted IDs:
+  - `conversationId = gtc-<sha256-prefix>`
+  - `visitorId = gtv-<sha256-prefix>`
+  - each request receives a unique `messageId = gtm-<request-id>`
+- Browser-supplied `tenant`, `page`, and `origin` metadata is accepted only for backward compatibility and is not forwarded for tenant selection.
+- Strict website Origin allowlist: staging plus `garagetemperli.ch` and `www.garagetemperli.ch`.
+- JSON/body allowlists and size limits.
+- `chat-proxy.php` rate-limits by `REMOTE_ADDR` before n8n/model; client proxy/IP headers are not trusted.
+- `chat-poll.php` uses the same server-side widget key and derived conversation ID, with an additional poll-rate guard.
+- `chat-read.php` uses the same server-side widget key and derived conversation ID and accepts only a bounded list of reply IDs.
+- `ai-chat.js` performs adaptive polling after normal chat activity and longer polling after an escalation. Polling pauses when the panel is closed/hidden. Human replies are rendered as `Garage Temperli Team`; read acknowledgement is sent only while the chat is open and visible.
+- `health.php` is a zero-model-call readiness endpoint. It returns HTTP 200 only when PHP cURL/temp runtime and all four required server settings are present. It exposes no secret values.
+- `contact.php` separately validates request fields, real calendar dates, past dates, Sunday closure and published opening-hour windows. Its recipient remains internal during test phase.
 - `.gitignore` blocks common secret/runtime files from future commits.
 
-## Server configuration required before merge/deploy
-Set these values on the Garage Temperli website server, never in GitHub/browser code:
+## Server configuration required before controlled E2E
+Set these only on the Garage Temperli website server, never in GitHub/browser code:
 
-- `TEMPERLI_N8N_URL` = production webhook URL for the approved Garage Temperli path in n8n workflow `09HVPJgxGyFCRIeJ`.
-- `TEMPERLI_N8N_SHARED_SECRET` = strong random shared secret used only between the website bridge and n8n.
+- `TEMPERLI_N8N_URL` = production URL ending in the approved `werkstatt-chat` webhook.
+- `TEMPERLI_N8N_POLL_URL` = production URL for `werkstatt-chat-poll`.
+- `TEMPERLI_N8N_READ_URL` = production URL for `werkstatt-chat-read`.
+- `TEMPERLI_WIDGET_KEY` = existing active Temperli `widget_key` from the n8n `Werkstaetten` table.
 
-## n8n requirement before paid AI is enabled
-The inbound Temperli path must verify header `X-Zantua-Bridge-Key` against the same secret **before** any OpenAI/model node, Telegram send, storage write, or other external side effect. A mismatch or missing header must fail closed.
+Do not commit or paste the widget key into repository files, browser JavaScript, documentation, chat messages, or screenshots.
 
-Expected request body from the proxy:
+## Compatibility result
+The previous branch design used a new `X-Zantua-Bridge-Key` and a different request body. Inspection of the exported live backend showed that design would not authenticate against the existing workflow. The branch has therefore been corrected to reuse the existing `X-Widget-Key` contract server-side. This removes an unnecessary new n8n security-gate architecture while keeping the key out of the browser.
 
-```json
-{
-  "tenant": "garage-temperli",
-  "source": "garage-temperli-web",
-  "message": "...",
-  "sessionId": "gt_..."
-}
-```
+## Verification performed
+Previously verified on the earlier bridge revision:
+- PHP syntax for the original `chat-proxy.php`: PASS on PHP 8.4.
+- Missing server config failed closed before upstream call.
+- Invalid Origin, unknown request field, and invalid session were rejected.
+- Previous `script.js`: `node --check` PASS.
+- Earlier hardened `contact.php`: PHP syntax PASS and local validation tests reached the expected mail-stage failure rather than PHP 500.
+- Earlier `health.php`: syntax/method/fail-closed checks passed.
 
-Expected successful n8n response: JSON containing one non-empty string field among `answer`, `reply`, `output`, or `message`.
+Current revision:
+- New `ai-chat.js` with adaptive poll/read logic: `node --check` PASS before commit.
+- GitHub accepted all current PHP/JS branch updates.
+- The exact current PHP revisions (`chat-proxy.php`, `chat-poll.php`, `chat-read.php`, `health.php`, latest `contact.php`) have **not** yet been executed on a PHP runtime after their latest edits. Treat them as static/configured, not runtime-proven.
 
-## Static verification performed
-- `chat-proxy.php` PHP 8.4 syntax: PASS (`php -l`).
-- Missing AI server config: PASS, HTTP 503 before upstream call.
-- Invalid AI Origin: PASS, HTTP 403.
-- Unknown AI request field: PASS, HTTP 400.
-- Invalid AI session ID: PASS, HTTP 422.
-- `script.js` JavaScript syntax: PASS (`node --check`).
-- Original contact endpoint reproduced a PHP 500 without mbstring; hardened `contact.php` removes that hard dependency.
-- Hardened `contact.php` PHP syntax: PASS; valid local payload reaches mail stage (local mail unavailable -> expected HTTP 503, not 500); unknown field HTTP 400; invalid service HTTP 422.
-- `health.php` PHP syntax: PASS; missing config/runtime HTTP 503; POST method HTTP 405.
+## Evidence level now
+- Website UI and bridge wiring: **configured on branch**.
+- JavaScript poll/read implementation: **static syntax checked**.
+- Existing live n8n auth/storage/poll/read architecture: **verified from 2026-08-25 export; export metadata reports earlier live execution 383 for the backend test tenant**.
+- Exact current website-PHP -> live n8n compatibility: **not E2E proven**.
+- OpenAI model path: **not configured/verified; inspected export uses Anthropic Claude**.
+- Separate `Werkstatt-Assistent – Telegram-Team` current live state: **not inspected in this run**.
+- Hostinger environment/runtime: **not verified**.
+- Real contact-form mail: **not E2E proven**.
 
-## Not yet proven
-- Hostinger/PHP runtime compatibility on the real staging host.
-- n8n header-auth gate and webhook payload compatibility.
-- OpenAI response through the real workflow.
-- Appointment/request storage.
-- Telegram handoff and poll/read.
-- Real website-to-n8n E2E.
-- Real form mail delivery.
+## Minimum path to production
+1. Confirm the current live n8n workflow has not materially diverged from the inspected export and inspect the separate Telegram-Team handoff workflow.
+2. Configure the four server environment values above without exposing the widget key.
+3. If OpenAI remains the required production model, replace/abstract the current Anthropic model step in n8n and statically verify structured output compatibility before sending a paid request.
+4. Run one controlled E2E: website message -> PHP bridge -> authorized tenant -> model response -> storage -> forced/controlled Telegram escalation -> team reply -> poll -> visible customer reply -> read acknowledgement.
+5. Only after that E2E and monitoring/health checks pass, merge/deploy the branch and mark Temperli `PRODUCTION + MONITORED`.
 
-Do not call this production-ready until those points are proven with the minimum controlled E2E test.
+Do not call this production-ready before those points are proven.
