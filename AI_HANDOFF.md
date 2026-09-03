@@ -10,7 +10,9 @@ Finish Garage Temperli before dashboard cleanup or unrelated projects.
 - Temperli should run through its own website/server path, not depend unnecessarily on the zantua-ai.com website.
 - Reuse n8n workshop stack: `09HVPJgxGyFCRIeJ`.
 - Required: website AI, OpenAI target path, Telegram human handoff, poll/read, appointment-request storage, vehicle identifier, name, phone, requested date/time, security/cost guard.
-- Not required for Temperli: Outlook calendar, automatic calendar booking, email handoff.
+- Outlook/calendar configuration may be supplied by the user later; do not block the current staging AI/Telegram test on it.
+- For the controlled staging E2E, use the existing Zantua test Telegram bot/target first. Do not wait for the customer's final Telegram destination.
+- Customer-facing production recipient/Telegram target are configuration swaps after the staging path is proven.
 
 ## Website state
 Repository: `Automationai1337/garage-temperli-v2`
@@ -50,7 +52,18 @@ Staging: `https://garage-temperli.zantua-ai.com/`
    - exactly one recommended next step
 
 ## Current user authorization
-The user has authorized continuing the Temperli implementation without repeatedly asking for routine handoff confirmations. Small API cost for the required final AI connection is acceptable. Still stop before destructive cleanup, secret disclosure, uncontrolled external sends, or materially risky production changes.
+The user has authorized continuing the Temperli implementation without repeatedly asking for routine handoff confirmations. Small API cost for the required final AI connection is acceptable. The existing Zantua Telegram bot may be used for the controlled staging handoff test. Still stop before destructive cleanup, secret disclosure, uncontrolled customer sends, or materially risky production changes.
+
+## Definition of Done for customer handoff
+Temperli is not DONE merely because the website renders. Required evidence states are:
+1. Website: production-ready/responsive.
+2. AI: real backend connection E2E-proven.
+3. Request storage: required fields persist with correct tenant/source.
+4. Human handoff: staging Telegram send + poll/read return path E2E-proven.
+5. Security: server-side bridge/guard configured before paid model call; no browser secret.
+6. Monitoring: customer-relevant health/request view backed by real data, not fake counters.
+7. Backup: recoverable code checkpoint exists.
+8. Final customer configuration: domain/DNS, customer email/Telegram target and optional Outlook calendar switched only after staging proof.
 
 ## Last Control Tower audit — 2026-09-03
 ### Verified changes/state
@@ -58,14 +71,17 @@ The user has authorized continuing the Temperli implementation without repeatedl
 - Contact endpoint is configured for JSON POST only, exact origin allowlist, 12 KB body cap, honeypot, server-side IP rate limit (5 requests / 15 minutes), required-field checks, optional email validation, and bounded field lengths.
 - Contact form is still deliberately routed to `kontakt@zantua-ai.com` with `[TEST]` subject; no production recipient change was made.
 - AI widget reads its backend from `window.GT_AI_CONFIG.endpoint`; current `index.html` does not define `GT_AI_CONFIG`, so the repo as inspected does not prove a real AI backend connection. When endpoint is empty, the widget uses a local fallback message rather than a model call.
+- Current `ai-chat.js` contains no poll/read endpoint handling; repository search for poll/read/GT_AI_CONFIG endpoint wiring returned no implementation.
 - No secret/API key was found in the inspected browser-side AI wiring.
+- A recoverable Git branch checkpoint `backup/temperli-2026-09-03` exists.
 
 ### Unchanged
-- No website logic, styling, endpoint, recipient, credential, n8n workflow, or production configuration changed in this audit.
-- n8n HANDOFF sticky was not available through the currently connected tools, so it was not updated and no n8n claim is treated as verified here.
+- No website runtime logic, styling, endpoint, recipient, credential, n8n workflow, or production configuration changed in this audit/update.
+- n8n HANDOFF sticky was not available through the currently connected tools, so it was not updated and no n8n claim is treated as re-verified here.
 
 ### Tests / exact results
-- Static repository inspection only; no HTTP request, email send, n8n execution, model call, browser E2E, or production deploy was performed.
+- Static repository inspection only; no successful live HTTP fetch, email send, n8n execution, model call, browser E2E, or production deploy was performed in this update.
+- External web fetch of the staging domain was attempted but returned a cache/fetch failure from the available web environment; this is not evidence that the site is down.
 - Evidence level: **static**.
 - `production_changed = false`
 - `paid_ai_calls = 0`
@@ -74,8 +90,10 @@ The user has authorized continuing the Temperli implementation without repeatedl
 ### Remaining risks/open issues
 1. Form delivery remains not E2E-proven.
 2. AI backend remains not E2E-proven; current repo does not expose a configured `GT_AI_CONFIG.endpoint` in `index.html`.
-3. n8n workshop stack and Telegram handoff cannot be re-verified from the currently connected sources.
-4. Production recipient must remain unchanged until the final handoff to Garage Temperli is explicitly approved.
+3. Poll/read is absent from the current frontend implementation.
+4. n8n workshop stack and Telegram handoff cannot be re-verified from the currently connected sources.
+5. The repository was observed as public during the latest GitHub metadata check; proprietary backend/security logic should not be committed there until repository visibility is made private or a separate private backend repository is used.
+6. Production email/Telegram/customer configuration must remain unchanged until staging proof is complete.
 
 ### Exactly one recommended next step
-Resolve and verify the intended server-side AI endpoint/proxy for staging, then run one controlled end-to-end AI request only when the endpoint and cost/security guard are confirmed.
+Make the Temperli code/backend repository private (or provide a private backend repository), then add/deploy the Temperli-owned server-side Chat/Poll/Read bridge without exposing widget secrets and connect the existing frontend to it for one controlled staging E2E using the Zantua test Telegram bot.
