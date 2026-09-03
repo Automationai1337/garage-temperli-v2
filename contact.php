@@ -4,10 +4,19 @@ header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
 header('Referrer-Policy: same-origin');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['ok' => false, 'message' => 'Methode nicht erlaubt.']);
+function gt_contact_json($status, $payload) {
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
+}
+
+function gt_contact_cut($value, $max) {
+    return function_exists('mb_substr') ? mb_substr($value, 0, $max) : substr($value, 0, $max);
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    gt_contact_json(405, ['ok' => false, 'message' => 'Methode nicht erlaubt.']);
 }
 
 $allowedOrigins = [
@@ -17,34 +26,38 @@ $allowedOrigins = [
 ];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if ($origin === '' || !in_array($origin, $allowedOrigins, true)) {
-    http_response_code(403);
-    echo json_encode(['ok' => false, 'message' => 'Anfrage nicht erlaubt.']);
-    exit;
+    gt_contact_json(403, ['ok' => false, 'message' => 'Anfrage nicht erlaubt.']);
 }
 
-$contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-if (stripos($contentType, 'application/json') === false) {
-    http_response_code(415);
-    echo json_encode(['ok' => false, 'message' => 'Ungültiges Format.']);
-    exit;
+$contentType = strtolower($_SERVER['CONTENT_TYPE'] ?? '');
+if (strpos($contentType, 'application/json') === false) {
+    gt_contact_json(415, ['ok' => false, 'message' => 'Ungültiges Format.']);
+}
+
+$contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+if ($contentLength > 12000) {
+    gt_contact_json(413, ['ok' => false, 'message' => 'Anfrage zu gross.']);
 }
 
 $raw = file_get_contents('php://input');
-if ($raw === false || strlen($raw) > 12000) {
-    http_response_code(413);
-    echo json_encode(['ok' => false, 'message' => 'Anfrage zu gross.']);
-    exit;
+if ($raw === false || strlen($raw) === 0 || strlen($raw) > 12000) {
+    gt_contact_json(400, ['ok' => false, 'message' => 'Ungültige Anfrage.']);
 }
 $data = json_decode($raw, true);
 if (!is_array($data)) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'message' => 'Ungültige Anfrage.']);
-    exit;
+    gt_contact_json(400, ['ok' => false, 'message' => 'Ungültige Anfrage.']);
 }
 
+$allowedKeys = ['name', 'phone', 'email', 'vehicle', 'service', 'date', 'time', 'message', 'website'];
+foreach (array_keys($data) as $key) {
+    if (!in_array($key, $allowedKeys, true)) {
+        gt_contact_json(400, ['ok' => false, 'message' => 'Unbekanntes Feld.']);
+    }
+}
+
+// Honeypot: acknowledge bot submissions without creating an external send.
 if (!empty($data['website'])) {
-    echo json_encode(['ok' => true, 'message' => 'Danke.']);
-    exit;
+    gt_contact_json(200, ['ok' => true, 'message' => 'Danke.']);
 }
 
 $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
@@ -53,12 +66,10 @@ $maxRequests = 5;
 $bucketId = (string)floor(time() / $window);
 $rateFile = sys_get_temp_dir() . '/gt_contact_' . hash('sha256', $ip . '|' . $bucketId) . '.count';
 $fh = @fopen($rateFile, 'c+');
-if (!$fh) {
-    http_response_code(503);
-    echo json_encode(['ok' => false, 'message' => 'Anfrage kann gerade nicht verarbeitet werden. Bitte rufen Sie uns an.']);
-    exit;
+if (!$fh || !flock($fh, LOCK_EX)) {
+    if ($fh) fclose($fh);
+    gt_contact_json(503, ['ok' => false, 'message' => 'Anfrage kann gerade nicht verarbeitet werden. Bitte rufen Sie uns an.']);
 }
-flock($fh, LOCK_EX);
 rewind($fh);
 $current = (int)trim((string)stream_get_contents($fh));
 $current++;
@@ -69,15 +80,14 @@ fflush($fh);
 flock($fh, LOCK_UN);
 fclose($fh);
 if ($current > $maxRequests) {
-    http_response_code(429);
-    echo json_encode(['ok' => false, 'message' => 'Zu viele Anfragen. Bitte versuchen Sie es später erneut oder rufen Sie uns an.']);
-    exit;
+    gt_contact_json(429, ['ok' => false, 'message' => 'Zu viele Anfragen. Bitte versuchen Sie es später erneut oder rufen Sie uns an.']);
 }
 
 $clean = static function ($value, $max = 300) {
     $value = trim((string)$value);
     $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value);
-    return mb_substr($value, 0, $max);
+    if ($value === null) $value = '';
+    return gt_contact_cut($value, $max);
 };
 
 $name = $clean($data['name'] ?? '', 100);
@@ -90,14 +100,65 @@ $time = $clean($data['time'] ?? '', 30);
 $message = $clean($data['message'] ?? '', 1800);
 
 if ($name === '' || $phone === '' || $vehicle === '' || $service === '') {
-    http_response_code(422);
-    echo json_encode(['ok' => false, 'message' => 'Bitte Name, Telefon, Fahrzeug und Anliegen ausfüllen.']);
-    exit;
+    gt_contact_json(422, ['ok' => false, 'message' => 'Bitte Name, Telefon, Fahrzeug und Anliegen ausfüllen.']);
 }
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    http_response_code(422);
-    echo json_encode(['ok' => false, 'message' => 'Bitte eine gültige E-Mail-Adresse eingeben.']);
-    exit;
+    gt_contact_json(422, ['ok' => false, 'message' => 'Bitte eine gültige E-Mail-Adresse eingeben.']);
+}
+
+$allowedServices = [
+    'Service & Wartung',
+    'Pneus & Räder',
+    'Reparatur / Diagnose',
+    'Klimaservice',
+    'Andere Anfrage'
+];
+if (!in_array($service, $allowedServices, true)) {
+    gt_contact_json(422, ['ok' => false, 'message' => 'Bitte ein gültiges Anliegen auswählen.']);
+}
+
+$appointmentDate = null;
+$appointmentWeekday = null;
+$zurichTz = new DateTimeZone('Europe/Zurich');
+if ($date !== '') {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte ein gültiges Wunschdatum angeben.']);
+    }
+    $appointmentDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date, $zurichTz);
+    $dateErrors = DateTimeImmutable::getLastErrors();
+    if ($appointmentDate === false
+        || ($dateErrors !== false && (($dateErrors['warning_count'] ?? 0) > 0 || ($dateErrors['error_count'] ?? 0) > 0))
+        || $appointmentDate->format('Y-m-d') !== $date) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte ein gültiges Wunschdatum angeben.']);
+    }
+    $today = new DateTimeImmutable('today', $zurichTz);
+    if ($appointmentDate < $today) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Das Wunschdatum darf nicht in der Vergangenheit liegen.']);
+    }
+    $appointmentWeekday = (int)$appointmentDate->format('N');
+    if ($appointmentWeekday === 7) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Sonntags ist die Garage geschlossen. Bitte wählen Sie einen anderen Tag.']);
+    }
+}
+
+if ($time !== '') {
+    if ($date === '') {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte wählen Sie zu Ihrer Wunschzeit auch ein Wunschdatum.']);
+    }
+    if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time)) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte eine gültige Wunschzeit angeben.']);
+    }
+    [$hour, $minute] = array_map('intval', explode(':', $time));
+    $minutes = ($hour * 60) + $minute;
+    if ($appointmentWeekday === 6) {
+        $withinOpeningHours = $minutes >= 480 && $minutes <= 720; // Sa 08:00–12:00
+    } else {
+        $withinOpeningHours = ($minutes >= 450 && $minutes <= 720) // Mo–Fr 07:30–12:00
+            || ($minutes >= 780 && $minutes <= 1080);              // Mo–Fr 13:00–18:00
+    }
+    if (!$withinOpeningHours) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte wählen Sie eine Wunschzeit innerhalb unserer Öffnungszeiten.']);
+    }
 }
 
 // TESTPHASE: Empfänger bleibt vorübergehend intern bei Zantua AI.
@@ -118,9 +179,7 @@ if ($email !== '') $headers[] = 'Reply-To: ' . $email;
 
 $sent = @mail($recipient, $subject, $body, implode("\r\n", $headers));
 if (!$sent) {
-    http_response_code(503);
-    echo json_encode(['ok' => false, 'message' => 'Die Nachricht konnte gerade nicht versendet werden. Bitte rufen Sie uns unter 044 725 43 82 an.']);
-    exit;
+    gt_contact_json(503, ['ok' => false, 'message' => 'Die Nachricht konnte gerade nicht versendet werden. Bitte rufen Sie uns unter 044 725 43 82 an.']);
 }
 
-echo json_encode(['ok' => true, 'message' => 'Testanfrage erfolgreich gesendet.']);
+gt_contact_json(200, ['ok' => true, 'message' => 'Testanfrage erfolgreich gesendet.']);
