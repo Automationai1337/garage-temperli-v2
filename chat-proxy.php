@@ -45,7 +45,8 @@ if (!is_array($data)) {
     gt_json(400, ['ok' => false, 'message' => 'Ungültige Anfrage.']);
 }
 
-$allowedKeys = ['message', 'sessionId'];
+// Legacy browser metadata is accepted but ignored. Tenant/source remain fixed server-side.
+$allowedKeys = ['message', 'sessionId', 'tenant', 'page', 'origin'];
 foreach (array_keys($data) as $key) {
     if (!in_array($key, $allowedKeys, true)) {
         gt_json(400, ['ok' => false, 'message' => 'Unbekanntes Feld.']);
