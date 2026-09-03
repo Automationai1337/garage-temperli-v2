@@ -65,7 +65,9 @@ Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`). Draft
 - TLS verification is required for upstream; redirects are disabled.
 - Updated branch `script.js` so `GT_AI_CONFIG.endpoint` points to same-origin `chat-proxy.php` before `ai-chat.js` loads.
 - Hardened branch `contact.php`: removed hard mbstring dependency, added request-key allowlist, explicit service/date/time validation and lock failure handling. Test recipient remains internal.
-- Added `TEMPERLI_AI_BRIDGE.md` with the deployment/auth contract and test evidence.
+- Added `health.php` as a zero-model-call readiness endpoint: 200 only when cURL/temp runtime and required server settings are present; otherwise 503. No secret values are exposed.
+- Added `.gitignore` to block common secret/private-key/local-runtime files from future commits.
+- Added/updated `TEMPERLI_AI_BRIDGE.md` with deployment/auth contract and test evidence.
 
 ### Unchanged
 - `main` is unchanged by this work.
@@ -81,13 +83,17 @@ Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`). Draft
 - `node --check` for updated `script.js`: PASS.
 - Existing `contact.php` was reproduced locally and exposed a PHP 500 when mbstring is absent (`mb_substr` undefined).
 - Hardened `contact.php`: `php -l` PASS; valid payload reached mail stage and returned expected HTTP 503 because local mail is unavailable, not HTTP 500; unknown field HTTP 400; invalid service HTTP 422.
+- `health.php`: PHP syntax PASS; missing config/runtime returns HTTP 503; POST returns HTTP 405.
+- Lightweight default-branch code search found no obvious OpenAI key/secret tokens. This is not a Git-history secret audit.
 
 ### Evidence level
 - Website AI bridge: **static**.
 - Frontend endpoint wiring: **configured on branch**.
 - Contact hardening: **static**.
+- Health/readiness monitoring: **static**.
 - n8n header gate: **not verified**.
 - OpenAI response: **not E2E verified**.
+- Request storage: **not verified**.
 - Telegram handoff/poll-read: **not E2E verified**.
 - Form mail delivery: **not E2E verified**.
 
@@ -95,15 +101,21 @@ Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`). Draft
 `paid_ai_calls = 0`
 `external_sends = 0`
 
+### Current AI/n8n technology assessment
+- Do not add Responses API background mode or WebSocket mode to Temperli now. Those capabilities can help a future long-running agency orchestrator, but they do not remove the current n8n/Telegram E2E blocker and would add integration complexity now.
+- Before exposing the Temperli workflow, verify the installed n8n version is fully patched/current. 2026 n8n advisories include critical/high issues affecting older 1.x/2.x releases, including webhook/file-access and task-runner isolation issues.
+- After access is available, run the built-in n8n security audit and use the current safe Save/Publish workflow rather than changing production blindly.
+
 ### Credentials/config still needed (do not expose secret values)
 - Real production webhook URL for approved Temperli path in workflow `09HVPJgxGyFCRIeJ`.
 - Strong shared secret configured both server-side and in an n8n gate that checks `X-Zantua-Bridge-Key` before any paid/external node.
 
 ### Remaining risks/open issues
 - Need current n8n HANDOFF sticky/workflow inspection before asserting payload compatibility or existing security gate.
+- Need installed n8n version/security-audit verification before enabling the public AI path.
 - Need Hostinger runtime verification for PHP cURL/temp-file rate limiting and actual mail transport.
 - Need controlled real E2E for AI response, request storage, Telegram handoff and poll/read.
-- Repository visibility was observed as public; proprietary code is not private until repo visibility is corrected.
+- Repository visibility is public; proprietary code is not private until repo visibility is corrected.
 
 ### Exactly one recommended next step
-Inspect workflow `09HVPJgxGyFCRIeJ` and its latest HANDOFF sticky, then configure/verify the `X-Zantua-Bridge-Key` gate before the first controlled paid E2E call.
+Inspect workflow `09HVPJgxGyFCRIeJ` and its latest HANDOFF sticky, verify n8n is current/patched, then configure/verify the `X-Zantua-Bridge-Key` gate before the first controlled paid E2E call.
