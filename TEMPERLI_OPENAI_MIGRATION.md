@@ -34,9 +34,10 @@ HTTP request:
 - `input`: server-built conversation history from `Verlauf serverseitig aufbauen`.
 - `tools`: one custom function named `kunden_antwort` using the existing schema, with `strict: true`.
 - `tool_choice`: force `kunden_antwort` so downstream logic never depends on free-form prose.
+- `store: false`: the application already owns conversation history/storage, so do not retain Responses API application state by default for customer chats.
 - Bound output tokens to the minimum that safely covers the structured answer.
 
-Do not enable web search, file search, background mode or other tools for Temperli. They add cost/latency/attack surface without a proven customer requirement.
+Do not enable web search, file search, background mode or other tools for Temperli. They add cost/latency/attack surface without a proven customer requirement. Do not rely on OpenAI-hosted conversation state for this flow; keep tenant-scoped history in the existing backend so provider replacement remains possible.
 
 ## Schema rule
 
@@ -61,6 +62,7 @@ The new parser should:
 - Confirm separate Telegram-Team trigger ownership and tenant binding.
 - Duplicate the current model/parser nodes in an isolated staging/candidate workflow or make a reversible draft version; do not replace the only proven production model path without rollback.
 - Validate the OpenAI request body and parser with pinned/mock response data at zero API cost.
+- Explicitly verify `store: false` in the saved node/request configuration.
 - Read back all changed nodes and compare downstream output fields against the old contract.
 
 ## Controlled E2E after static gate
@@ -76,10 +78,16 @@ Spend the minimum model calls needed to prove:
 
 Only after these pass can OpenAI be marked REAL E2E TESTED.
 
+## Current OpenAI verification — 2026-09-03
+
+- Current OpenAI model catalog still positions `gpt-5.6-terra` as the intelligence/cost balance and `gpt-5.6-luna` as the cost-sensitive high-volume option.
+- Current OpenAI Responses API data-control documentation states that Responses application state is retained by default; because Temperli already stores its own tenant-scoped history, this plan now explicitly requires `store: false`.
+- Structured JSON schema / strict output remains supported. No new OpenAI feature discovered in this check justifies adding web search, background execution or hosted state to Temperli before the production gate.
+
 ## Evidence level
 
 - Current Anthropic model path: VERIFIED FROM DATED WORKFLOW ARTIFACTS.
-- OpenAI architecture in this file: STATIC DESIGN.
+- OpenAI architecture in this file: STATIC DESIGN, CURRENT PUBLIC DOCS RE-CHECKED 2026-09-03.
 - OpenAI credential: NOT VERIFIED.
 - OpenAI node/parser in current live: NOT IMPLEMENTED/NOT VERIFIED.
 - OpenAI E2E: NOT TESTED.
