@@ -10,6 +10,14 @@ function gt_json($status, $payload) {
     exit;
 }
 
+function gt_strlen($value) {
+    return function_exists('mb_strlen') ? mb_strlen($value) : strlen($value);
+}
+
+function gt_substr($value, $start, $length) {
+    return function_exists('mb_substr') ? mb_substr($value, $start, $length) : substr($value, $start, $length);
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     header('Allow: POST');
     gt_json(405, ['ok' => false, 'message' => 'Methode nicht erlaubt.']);
@@ -55,7 +63,7 @@ foreach (array_keys($data) as $key) {
 
 $message = trim((string)($data['message'] ?? ''));
 $sessionId = trim((string)($data['sessionId'] ?? ''));
-if ($message === '' || mb_strlen($message) > 800) {
+if ($message === '' || gt_strlen($message) > 800) {
     gt_json(422, ['ok' => false, 'message' => 'Nachricht fehlt oder ist zu lang.']);
 }
 if (!preg_match('/^[A-Za-z0-9_-]{4,96}$/', $sessionId)) {
@@ -158,5 +166,5 @@ if ($answer === null) {
     gt_json(502, ['ok' => false, 'message' => 'Die KI-Antwort konnte nicht verarbeitet werden.']);
 }
 
-$answer = mb_substr($answer, 0, 5000);
+$answer = gt_substr($answer, 0, 5000);
 gt_json(200, ['ok' => true, 'answer' => $answer, 'requestId' => $requestId]);
