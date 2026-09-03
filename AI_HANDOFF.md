@@ -52,5 +52,30 @@ Staging: `https://garage-temperli.zantua-ai.com/`
 ## Current user authorization
 The user has authorized continuing the Temperli implementation without repeatedly asking for routine handoff confirmations. Small API cost for the required final AI connection is acceptable. Still stop before destructive cleanup, secret disclosure, uncontrolled external sends, or materially risky production changes.
 
-## Last ChatGPT update
-Created this shared handoff file so Claude and ChatGPT can coordinate through a durable common source instead of the user manually copying every status message. Direct Claude event triggering is not yet connected from ChatGPT; this file is the shared state channel.
+## Last Control Tower audit — 2026-09-03
+### Verified changes/state
+- Reviewed current `main` files `index.html`, `script.js`, `contact.php`, and `ai-chat.js` statically.
+- Contact endpoint is configured for JSON POST only, exact origin allowlist, 12 KB body cap, honeypot, server-side IP rate limit (5 requests / 15 minutes), required-field checks, optional email validation, and bounded field lengths.
+- Contact form is still deliberately routed to `kontakt@zantua-ai.com` with `[TEST]` subject; no production recipient change was made.
+- AI widget reads its backend from `window.GT_AI_CONFIG.endpoint`; current `index.html` does not define `GT_AI_CONFIG`, so the repo as inspected does not prove a real AI backend connection. When endpoint is empty, the widget uses a local fallback message rather than a model call.
+- No secret/API key was found in the inspected browser-side AI wiring.
+
+### Unchanged
+- No website logic, styling, endpoint, recipient, credential, n8n workflow, or production configuration changed in this audit.
+- n8n HANDOFF sticky was not available through the currently connected tools, so it was not updated and no n8n claim is treated as verified here.
+
+### Tests / exact results
+- Static repository inspection only; no HTTP request, email send, n8n execution, model call, browser E2E, or production deploy was performed.
+- Evidence level: **static**.
+- `production_changed = false`
+- `paid_ai_calls = 0`
+- `external_sends = 0`
+
+### Remaining risks/open issues
+1. Form delivery remains not E2E-proven.
+2. AI backend remains not E2E-proven; current repo does not expose a configured `GT_AI_CONFIG.endpoint` in `index.html`.
+3. n8n workshop stack and Telegram handoff cannot be re-verified from the currently connected sources.
+4. Production recipient must remain unchanged until the final handoff to Garage Temperli is explicitly approved.
+
+### Exactly one recommended next step
+Resolve and verify the intended server-side AI endpoint/proxy for staging, then run one controlled end-to-end AI request only when the endpoint and cost/security guard are confirmed.
