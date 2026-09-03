@@ -125,20 +125,12 @@ $replies = [];
 $replyIds = [];
 $seenReplyIds = [];
 
-// Preserve reply/id correlation. Never acknowledge an ID whose matching reply was rejected.
+// Preserve reply/id correlation. Only expose a reply if it can be acknowledged with a valid matching ID.
 foreach (array_slice($rawReplies, 0, 20, true) as $index => $reply) {
-    if (!is_string($reply) || trim($reply) === '') {
+    if (!is_string($reply) || trim($reply) === '' || !array_key_exists($index, $rawIds)) {
         continue;
     }
 
-    $cleanReply = function_exists('mb_substr')
-        ? mb_substr(trim($reply), 0, 5000)
-        : substr(trim($reply), 0, 5000);
-    $replies[] = $cleanReply;
-
-    if (!array_key_exists($index, $rawIds)) {
-        continue;
-    }
     $id = $rawIds[$index];
     $validId = is_int($id)
         || (is_string($id) && preg_match('/^[A-Za-z0-9_-]{1,96}$/', $id));
@@ -151,6 +143,11 @@ foreach (array_slice($rawReplies, 0, 20, true) as $index => $reply) {
         continue;
     }
     $seenReplyIds[$idKey] = true;
+
+    $cleanReply = function_exists('mb_substr')
+        ? mb_substr(trim($reply), 0, 5000)
+        : substr(trim($reply), 0, 5000);
+    $replies[] = $cleanReply;
     $replyIds[] = $id;
 }
 
