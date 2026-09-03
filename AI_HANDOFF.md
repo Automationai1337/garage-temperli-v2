@@ -52,5 +52,55 @@ Staging: `https://garage-temperli.zantua-ai.com/`
 ## Current user authorization
 The user has authorized continuing the Temperli implementation without repeatedly asking for routine handoff confirmations. Small API cost for the required final AI connection is acceptable. Still stop before destructive cleanup, secret disclosure, uncontrolled external sends, or materially risky production changes.
 
-## Last ChatGPT update
-Created this shared handoff file so Claude and ChatGPT can coordinate through a durable common source instead of the user manually copying every status message. Direct Claude event triggering is not yet connected from ChatGPT; this file is the shared state channel.
+## Last ChatGPT update — 2026-09-03
+Working branch: `work/temperli-ai-bridge-20260903` (not merged to `main`).
+
+### Exact changes
+- Added `chat-proxy.php` as a same-origin server bridge for the website AI.
+- Proxy fixes `tenant=garage-temperli` and `source=garage-temperli-web` server-side.
+- Added strict Origin allowlist, JSON/body allowlist, body size limit, session validation and server-side rate limiting before n8n/model.
+- Proxy uses only `REMOTE_ADDR`; client-supplied proxy/IP headers are not trusted.
+- Added server-only config contract: `TEMPERLI_N8N_URL` and `TEMPERLI_N8N_SHARED_SECRET`.
+- Proxy sends `X-Zantua-Bridge-Key` to n8n and fails closed when URL/secret is absent or invalid.
+- TLS verification is required for upstream; redirects are disabled.
+- Updated branch `script.js` so `GT_AI_CONFIG.endpoint` points to same-origin `chat-proxy.php` before `ai-chat.js` loads.
+- Added `TEMPERLI_AI_BRIDGE.md` with the deployment/auth contract and test evidence.
+
+### Unchanged
+- `main` is unchanged by this work.
+- No n8n node/workflow/credential was changed because this run had no n8n tool access.
+- No OpenAI prompt/model configuration changed.
+- No Telegram configuration changed.
+- No customer email recipient changed.
+
+### Tests and exact results
+- `php -l chat-proxy.php`: PASS, no syntax errors on PHP 8.4.23.
+- Controlled local POST with valid staging Origin but missing server config: HTTP 503, fail-closed before upstream call.
+- Invalid Origin: HTTP 403.
+- Unknown body field: HTTP 400.
+- Invalid session ID: HTTP 422.
+- `node --check` for updated `script.js`: PASS.
+
+### Evidence level
+- AI bridge: **static** only.
+- Frontend endpoint wiring: **configured on branch** only.
+- n8n header gate: **not verified**.
+- OpenAI response: **not E2E verified**.
+- Telegram handoff/poll-read: **not E2E verified**.
+
+`production_changed = false`
+`paid_ai_calls = 0`
+`external_sends = 0`
+
+### Credentials/config still needed (do not expose secret values)
+- Real production webhook URL for approved Temperli path in workflow `09HVPJgxGyFCRIeJ`.
+- Strong shared secret configured both server-side and in an n8n gate that checks `X-Zantua-Bridge-Key` before any paid/external node.
+
+### Remaining risks/open issues
+- Need current n8n HANDOFF sticky/workflow inspection before asserting payload compatibility or existing security gate.
+- Need Hostinger runtime verification for PHP cURL/temp-file rate limiting.
+- Need controlled real E2E for AI response, request storage, Telegram handoff and poll/read.
+- Repository visibility was previously observed as public; proprietary code should not be treated as private until repo visibility is corrected.
+
+### Exactly one recommended next step
+Inspect workflow `09HVPJgxGyFCRIeJ` and its latest HANDOFF sticky, then configure/verify the `X-Zantua-Bridge-Key` gate before the first controlled paid E2E call.
