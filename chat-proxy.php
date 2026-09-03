@@ -53,7 +53,7 @@ if (!is_array($data)) {
     gt_json(400, ['ok' => false, 'message' => 'Ungültige Anfrage.']);
 }
 
-// Legacy browser metadata is accepted but ignored. Tenant/source remain fixed server-side.
+// Browser metadata is accepted for backward compatibility but never trusted for tenant selection.
 $allowedKeys = ['message', 'sessionId', 'tenant', 'page', 'origin'];
 foreach (array_keys($data) as $key) {
     if (!in_array($key, $allowedKeys, true)) {
@@ -70,7 +70,7 @@ if (!preg_match('/^[A-Za-z0-9_-]{4,96}$/', $sessionId)) {
     gt_json(422, ['ok' => false, 'message' => 'Ungültige Sitzung.']);
 }
 
-// Rate limiting occurs before any n8n/model call. Do not trust proxy/IP headers.
+// Rate limiting occurs before any n8n/model call. Do not trust client proxy/IP headers.
 $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 $windowSeconds = 60;
 $maxRequests = 12;
@@ -97,10 +97,10 @@ if ($count > $maxRequests) {
     gt_json(429, ['ok' => false, 'message' => 'Zu viele Anfragen. Bitte kurz warten.']);
 }
 
-// Secrets and the n8n URL must stay server-side. Fail closed when either is missing.
+// Reuse the existing live Werkstatt-Assistent contract, but keep its widget key server-side.
 $upstreamUrl = trim((string)getenv('TEMPERLI_N8N_URL'));
-$sharedSecret = trim((string)getenv('TEMPERLI_N8N_SHARED_SECRET'));
-if ($upstreamUrl === '' || $sharedSecret === '') {
+$widgetKey = trim((string)getenv('TEMPERLI_WIDGET_KEY'));
+if ($upstreamUrl === '' || $widgetKey === '') {
     gt_json(503, ['ok' => false, 'message' => 'Die KI-Verbindung ist noch nicht freigeschaltet.']);
 }
 if (!filter_var($upstreamUrl, FILTER_VALIDATE_URL) || stripos($upstreamUrl, 'https://') !== 0) {
@@ -113,15 +113,26 @@ if (!function_exists('curl_init')) {
 try {
     $requestId = bin2hex(random_bytes(8));
 } catch (Throwable $e) {
-    $requestId = hash('sha256', microtime(true) . '|' . $ip);
+    $requestId = substr(hash('sha256', microtime(true) . '|' . $ip . '|' . $sessionId), 0, 16);
 }
 
+// Never let the browser choose n8n tenant identifiers. The server-held widget key resolves the tenant.
+// Derive stable, restricted IDs from the browser session so server-side history and handoff stay consistent.
+$sessionHash = substr(hash('sha256', $sessionId), 0, 32);
+$conversationId = 'gtc-' . $sessionHash;
+$visitorId = 'gtv-' . $sessionHash;
+$messageId = 'gtm-' . $requestId;
+
 $payload = json_encode([
-    'tenant' => 'garage-temperli',
-    'source' => 'garage-temperli-web',
     'message' => $message,
-    'sessionId' => $sessionId,
+    'conversationId' => $conversationId,
+    'visitorId' => $visitorId,
+    'messageId' => $messageId,
+    'channel' => 'web',
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if ($payload === false) {
+    gt_json(500, ['ok' => false, 'message' => 'Die Anfrage konnte nicht verarbeitet werden.']);
+}
 
 $ch = curl_init($upstreamUrl);
 curl_setopt_array($ch, [
@@ -135,7 +146,7 @@ curl_setopt_array($ch, [
     CURLOPT_HTTPHEADER => [
         'Content-Type: application/json',
         'Accept: application/json',
-        'X-Zantua-Bridge-Key: ' . $sharedSecret,
+        'X-Widget-Key: ' . $widgetKey,
         'X-Request-ID: ' . $requestId,
     ],
     CURLOPT_POSTFIELDS => $payload,
@@ -167,4 +178,10 @@ if ($answer === null) {
 }
 
 $answer = gt_substr($answer, 0, 5000);
-gt_json(200, ['ok' => true, 'answer' => $answer, 'requestId' => $requestId]);
+gt_json(200, [
+    'ok' => true,
+    'answer' => $answer,
+    'conversationId' => $conversationId,
+    'escalate' => !empty($decoded['escalate']),
+    'requestId' => $requestId,
+]);
