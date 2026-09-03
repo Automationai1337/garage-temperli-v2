@@ -47,7 +47,6 @@ if (!empty($data['website'])) {
     exit;
 }
 
-// Fester 15-Minuten-Bucket, ausschließlich auf REMOTE_ADDR.
 $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 $window = 900;
 $maxRequests = 5;
@@ -101,8 +100,10 @@ if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     exit;
 }
 
-$subject = 'Neue Website-Anfrage – Garage Temperli';
-$body = "Neue Anfrage über die Garage-Temperli-Website\n\n"
+// TESTPHASE: Empfänger bleibt vorübergehend intern bei Zantua AI.
+$recipient = 'kontakt@zantua-ai.com';
+$subject = '[TEST] Garage Temperli – neue Website-Anfrage';
+$body = "TESTANFRAGE – noch nicht an Garage Temperli weitergeleitet\n\n"
       . "Name: {$name}\nTelefon: {$phone}\nE-Mail: " . ($email ?: 'nicht angegeben') . "\n"
       . "Fahrzeug / VIN / Typenschein: {$vehicle}\nAnliegen: {$service}\n"
       . "Wunschdatum: " . ($date ?: 'offen') . "\nWunschzeit: " . ($time ?: 'offen') . "\n\n"
@@ -115,11 +116,11 @@ $headers = [
 ];
 if ($email !== '') $headers[] = 'Reply-To: ' . $email;
 
-$sent = @mail('info@garagetemperli.ch', $subject, $body, implode("\r\n", $headers));
+$sent = @mail($recipient, $subject, $body, implode("\r\n", $headers));
 if (!$sent) {
     http_response_code(503);
     echo json_encode(['ok' => false, 'message' => 'Die Nachricht konnte gerade nicht versendet werden. Bitte rufen Sie uns unter 044 725 43 82 an.']);
     exit;
 }
 
-echo json_encode(['ok' => true, 'message' => 'Vielen Dank. Ihre Anfrage wurde an Garage Temperli gesendet.']);
+echo json_encode(['ok' => true, 'message' => 'Testanfrage erfolgreich gesendet.']);
