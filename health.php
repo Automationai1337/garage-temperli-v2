@@ -13,6 +13,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
 
 $runtimeOk = function_exists('curl_init') && is_writable(sys_get_temp_dir());
 $configured = trim((string)getenv('TEMPERLI_N8N_URL')) !== ''
+    && trim((string)getenv('TEMPERLI_N8N_POLL_URL')) !== ''
+    && trim((string)getenv('TEMPERLI_N8N_READ_URL')) !== ''
     && trim((string)getenv('TEMPERLI_WIDGET_KEY')) !== '';
 
 if (!$runtimeOk || !$configured) {
