@@ -116,11 +116,49 @@ $allowedServices = [
 if (!in_array($service, $allowedServices, true)) {
     gt_contact_json(422, ['ok' => false, 'message' => 'Bitte ein gültiges Anliegen auswählen.']);
 }
-if ($date !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-    gt_contact_json(422, ['ok' => false, 'message' => 'Bitte ein gültiges Wunschdatum angeben.']);
+
+$appointmentDate = null;
+$appointmentWeekday = null;
+$zurichTz = new DateTimeZone('Europe/Zurich');
+if ($date !== '') {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte ein gültiges Wunschdatum angeben.']);
+    }
+    $appointmentDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date, $zurichTz);
+    $dateErrors = DateTimeImmutable::getLastErrors();
+    if ($appointmentDate === false
+        || ($dateErrors !== false && (($dateErrors['warning_count'] ?? 0) > 0 || ($dateErrors['error_count'] ?? 0) > 0))
+        || $appointmentDate->format('Y-m-d') !== $date) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte ein gültiges Wunschdatum angeben.']);
+    }
+    $today = new DateTimeImmutable('today', $zurichTz);
+    if ($appointmentDate < $today) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Das Wunschdatum darf nicht in der Vergangenheit liegen.']);
+    }
+    $appointmentWeekday = (int)$appointmentDate->format('N');
+    if ($appointmentWeekday === 7) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Sonntags ist die Garage geschlossen. Bitte wählen Sie einen anderen Tag.']);
+    }
 }
-if ($time !== '' && !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time)) {
-    gt_contact_json(422, ['ok' => false, 'message' => 'Bitte eine gültige Wunschzeit angeben.']);
+
+if ($time !== '') {
+    if ($date === '') {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte wählen Sie zu Ihrer Wunschzeit auch ein Wunschdatum.']);
+    }
+    if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time)) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte eine gültige Wunschzeit angeben.']);
+    }
+    [$hour, $minute] = array_map('intval', explode(':', $time));
+    $minutes = ($hour * 60) + $minute;
+    if ($appointmentWeekday === 6) {
+        $withinOpeningHours = $minutes >= 480 && $minutes <= 720; // Sa 08:00–12:00
+    } else {
+        $withinOpeningHours = ($minutes >= 450 && $minutes <= 720) // Mo–Fr 07:30–12:00
+            || ($minutes >= 780 && $minutes <= 1080);              // Mo–Fr 13:00–18:00
+    }
+    if (!$withinOpeningHours) {
+        gt_contact_json(422, ['ok' => false, 'message' => 'Bitte wählen Sie eine Wunschzeit innerhalb unserer Öffnungszeiten.']);
+    }
 }
 
 // TESTPHASE: Empfänger bleibt vorübergehend intern bei Zantua AI.
