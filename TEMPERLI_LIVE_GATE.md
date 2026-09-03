@@ -1,36 +1,28 @@
 # Garage Temperli — Live Production Gate
 
-Status: BLOCKED FOR PRODUCTION until the current live n8n workflow is read back and the first-contact zero-result bug is ruled out or fixed.
+Status: BLOCKED FOR PRODUCTION until the current live n8n workflow and the separate Telegram-Team workflow are read back, the remaining poll zero-result risk is ruled out, the OpenAI path is intentionally configured, and one controlled E2E passes.
 
-## Critical evidence discovered 2026-09-03
+## Corrected evidence discovered 2026-09-03
 
-A later real-tested v14 STAGING artifact from 2026-08-26 documents a critical `Data Table -> get` behavior in n8n: when a lookup returned zero rows, affected nodes produced no item, so downstream "not found" branches never ran. The artifact records real failures before the fix (`#385`, `#387`, `#388`) and real passes after adding `alwaysOutputData=true` (`#389` full first-contact chat, `#394` invalid key denied cleanly).
+The 2026-08-26 v14 STAGING test trail documents a real n8n `Data Table -> get` zero-result behavior: without `alwaysOutputData=true`, a lookup returning zero rows could produce no item and stop downstream "not found" logic. STAGING failures `#385`, `#387`, `#388` were followed by real passes after the fix, including first-contact `#389` and invalid-key `#394`.
 
-Most importantly, that handoff note explicitly states the same code pattern existed in the LIVE workflow `Werkstatt-Assistent Backend` and had **not** been changed there at that time. Therefore the older live export is not enough evidence that first-contact, empty-poll, duplicate-miss and related zero-result paths work today.
+A later production-gate note in the same 2026-08-26 evidence **corrects an earlier claim** about LIVE: it states that the LIVE workflow already had the relevant `alwaysOutputData` settings on the main first-contact path. It identifies three live exceptions at that point: `Session pruefen (Haupt)` (considered likely harmless in its merge path), `Antworten abrufen` (explicitly called a possible real live risk and not verified), and `Reservierungen pruefen` (considered unlikely to hit zero after the reservation insert). LIVE was not changed in that test.
 
-## Nodes/patterns that must be verified on CURRENT LIVE
+Therefore: **do not claim the live first-contact path is broken.** The stronger, narrower production blocker is that the current live state is still unread, and the dated evidence explicitly leaves the live `Antworten abrufen` empty-poll path unverified. Temperli now depends on that poll path for human replies.
 
-Do not blindly patch by name. Read back the current workflow and verify every `Data Table` `get` where downstream logic expects a "zero rows / not found" branch. The v14 real-test note specifically called out patterns including:
+## What must be verified on CURRENT LIVE
 
-- Rate-limit lookup
-- Visitor lookup
-- Conversation lookup / conversation-status lookup
-- Customer lookup
-- Duplicate lookup
-- Workshop lookup for chat, poll and read
-- Poll answer lookup
-- Dashboard/session lookups
-- Telegram tenant/conversation lookups
-- Prompt-history loads
-- Reservation lookup
-
-If the current live node still suppresses output on zero rows, set the n8n equivalent of `alwaysOutputData=true` only where downstream logic explicitly needs an empty item. Verify by readback after save.
+1. Read back current `09HVPJgxGyFCRIeJ` rather than applying an old STAGING patch blindly.
+2. Confirm the main chat zero-result lookups still have their required output-on-empty behavior.
+3. Inspect `Antworten abrufen` in the LIVE poll path specifically. An empty poll must still reach `Antworten sammeln` / webhook response and return an empty reply list instead of hanging.
+4. Check the current `Reservierungen pruefen` and `Session pruefen (Haupt)` behavior only if those paths remain relevant; do not change them solely because an old note listed them.
+5. Read back the separate `Werkstatt-Assistent – Telegram-Team` workflow and verify that it is the single active Telegram reply owner, performs tenant-safe conversation lookup, stores replies with the correct tenant, and does not conflict with another Telegram trigger.
 
 ## Required evidence before Temperli E2E
 
-1. CURRENT live `09HVPJgxGyFCRIeJ` readback confirms zero-result paths are safe.
-2. CURRENT separate `Werkstatt-Assistent – Telegram-Team` readback confirms the single active Telegram reply trigger and tenant-safe reply storage.
-3. Model path is intentionally OpenAI if OpenAI remains the product requirement. The inspected 2026-08-25/26 artifacts still use Anthropic Claude, so OpenAI is not yet evidenced.
+1. CURRENT live chat + poll/read contract matches the website bridge, especially empty-poll behavior.
+2. CURRENT Telegram-Team handoff is tenant-safe and trigger ownership is unambiguous.
+3. Model path is intentionally OpenAI if OpenAI remains the product requirement. The inspected 2026-08-25/26 artifacts use Anthropic Claude, so OpenAI is not yet evidenced.
 4. Website server has chat/poll/read webhook URLs plus Temperli widget key configured server-side only.
 5. Latest PHP bridge files pass runtime syntax/fail-closed checks on the actual Hostinger/PHP environment.
 6. One controlled E2E passes: website -> authorized tenant -> model -> storage -> forced escalation -> Telegram -> team reply -> poll -> customer-visible reply -> read acknowledgement.
@@ -42,8 +34,10 @@ If the current live node still suppresses output on zero rows, set the n8n equiv
 - Frontend JS syntax: STATIC PASS.
 - Latest PHP revisions: STATIC / NOT YET RUNTIME-PROVEN.
 - n8n architecture: VERIFIED FROM DATED EXPORTS.
-- v14 first-contact fix: REAL-TEST EVIDENCE IN STAGING ARTIFACT.
-- Current live first-contact fix: UNKNOWN UNTIL READBACK.
+- STAGING zero-result fix: REAL-TEST EVIDENCE.
+- LIVE main first-contact zero-result configuration as of the later 2026-08-26 note: REPORTED/READ-COMPARED AS CORRECT, not current proof.
+- LIVE `Antworten abrufen` empty-poll behavior: EXPLICITLY UNVERIFIED IN DATED EVIDENCE.
+- Current live state: UNKNOWN UNTIL READBACK.
 - OpenAI path: NOT PROVEN.
 - Full Temperli E2E: NOT PROVEN.
 
@@ -55,4 +49,4 @@ If the current live node still suppresses output on zero rows, set the n8n equiv
 
 ## Exactly one next step
 
-Read back CURRENT live `09HVPJgxGyFCRIeJ`; verify/fix the zero-result `Data Table get` pattern first. Do not spend a paid model call on Temperli until that gate is proven.
+Read back CURRENT live `09HVPJgxGyFCRIeJ`, with first priority on `Antworten abrufen` / the empty-poll response path and the separate Telegram-Team handoff. Only after that static gate is clean should a paid OpenAI E2E be spent.
