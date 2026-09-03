@@ -1,0 +1,16 @@
+# Never commit secrets or local runtime configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+private/
+config.local.php
+secrets.php
+
+# Local/runtime artifacts
+*.log
+.DS_Store
+Thumbs.db
