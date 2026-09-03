@@ -11,11 +11,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
     exit;
 }
 
+function gt_health_https_url($value) {
+    $value = trim((string)$value);
+    if ($value === '' || !filter_var($value, FILTER_VALIDATE_URL)) {
+        return false;
+    }
+    $scheme = strtolower((string)parse_url($value, PHP_URL_SCHEME));
+    return $scheme === 'https';
+}
+
 $runtimeOk = function_exists('curl_init') && is_writable(sys_get_temp_dir());
-$configured = trim((string)getenv('TEMPERLI_N8N_URL')) !== ''
-    && trim((string)getenv('TEMPERLI_N8N_POLL_URL')) !== ''
-    && trim((string)getenv('TEMPERLI_N8N_READ_URL')) !== ''
-    && trim((string)getenv('TEMPERLI_WIDGET_KEY')) !== '';
+$chatUrl = trim((string)getenv('TEMPERLI_N8N_URL'));
+$pollUrl = trim((string)getenv('TEMPERLI_N8N_POLL_URL'));
+$readUrl = trim((string)getenv('TEMPERLI_N8N_READ_URL'));
+$widgetKey = trim((string)getenv('TEMPERLI_WIDGET_KEY'));
+$configured = gt_health_https_url($chatUrl)
+    && gt_health_https_url($pollUrl)
+    && gt_health_https_url($readUrl)
+    && $widgetKey !== '';
 
 if (!$runtimeOk || !$configured) {
     http_response_code(503);
